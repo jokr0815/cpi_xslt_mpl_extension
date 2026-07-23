@@ -3,7 +3,7 @@
 ## Overview
 
 Officially unsupported XSLT java extension to direclty manipulate the SAP Integrations Suite Message Processing Logs (MPL) without groovy directly from XSLT with the following methods (similar to groovy):
-- - mpl:setStringProperty($SAP_MessageProcessingLog, $string-key, $string-value)
+- mpl:setStringProperty($SAP_MessageProcessingLog, $string-key, $string-value)
 - mpl:addCustomHeaderProperty($SAP_MessageProcessingLog, $string-key, $string-value, $debugEnabled)
 - mpl:addAttachmentAsString($SAP_MessageProcessingLog, $string-filename, $string-content,$string-mimetype, $debugEnabled)
 
