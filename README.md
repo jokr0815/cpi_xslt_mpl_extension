@@ -2,9 +2,10 @@
 
 ## Overview
 
-When executing XSLT transformations in SAP Integration Suite (Cloud Integration), you can leverage **built-in SAP Java classes** directly from your stylesheet. You do **not** need to write custom Java code to perform essential runtime tasks like reading/writing headers or fetching exchange properties.
-
-CPI's Saxon XSLT engine can invoke Java classes directly via namespace declarations.
+Officially unsupported XSLT java extension to direclty manipulate the SAP Integrations Suite Message Processing Logs (MPL) without groovy directly from XSLT with the following methods (similar to groovy):
+- - mpl:setStringProperty($SAP_MessageProcessingLog, $string-key, $string-value)
+- mpl:addCustomHeaderProperty($SAP_MessageProcessingLog, $string-key, $string-value, $debugEnabled)
+- mpl:addAttachmentAsString($SAP_MessageProcessingLog, $string-filename, $string-content,$string-mimetype, $debugEnabled)
 
 ---
 
