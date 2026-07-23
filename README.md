@@ -2,9 +2,20 @@
 
 ## Overview
 
-When executing XSLT transformations in SAP Integration Suite (Cloud Integration), you can leverage **built-in SAP Java classes** directly from your stylesheet. You do **not** need to write, compile, or upload custom Java `.jar` files into your iFlow or Script Collection to perform essential runtime tasks like reading/writing headers or fetching exchange properties.
+When executing XSLT transformations in SAP Integration Suite (Cloud Integration), you can leverage **built-in SAP Java classes** directly from your stylesheet. You do **not** need to write custom Java code to perform essential runtime tasks like reading/writing headers or fetching exchange properties.
 
-CPI's Saxon XSLT engine can invoke these standard Java classes directly via namespace declarations.
+CPI's Saxon XSLT engine can invoke Java classes directly via namespace declarations.
+
+---
+
+## Installation / Setup
+
+To use the `MPLWriter` helper capabilities within your iFlow:
+
+1. Download the compiled [MPLWriter.jar](https://github.com/jokr0815/cpi_xslt_mpl_extension/releases/download/v1.0.0/MPLWriter.jar) from the latest release.
+2. Open your Integration Flow (iFlow) in SAP Integration Suite.
+3. Under the **Resources** tab, navigate to **Archives** (or **Scripts / Libraries**).
+4. Upload `MPLWriter.jar` into your iFlow archive.
 
 ---
 
