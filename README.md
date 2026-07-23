@@ -1,157 +1,87 @@
-# cpi_xslt_mpl_extension
-# Useful Functions for XSLT in SAP Integration Suite (CPI)
+# How to Use Custom XSLT Java Extension "MPLWriter" in SAP Integration Suite (CPI)
 
 ## Overview
 
-When migrating from SAP Process Orchestration (PO) or developing natively in SAP Integration Suite (Cloud Integration), developers often encounter a capability gap: **XSLT 2.0 / 3.0 transformations in CPI do not natively provide a mechanism to interact directly with the Message Processing Log (MPL)**.
+When developing transformations in SAP Integration Suite (Cloud Integration), developers frequently need to write entries to the **Message Processing Log (MPL)**—such as setting Custom Header Properties or attaching intermediate payloads for tracing—directly during the XSLT execution step.
 
-In SAP PO, extension calls allowed logging directly to `MappingTrace` or `AuditLog`. In SAP Integration Suite, the **`MPLWriter`** Java utility bridges this gap. By utilizing OSGi reflection, it enables XSLT steps to:
-
-- Add custom header properties (`addCustomHeaderProperty`)
-- Store message body/payload attachments (`addAttachmentAsString`)
-- Set text string properties for debugging/tracing (`setStringProperty`)
+Because standard XSLT 2.0 / 3.0 elements cannot access CPI-specific runtime services natively, a custom **Java Extension JAR** is used. Saxon (CPI's XSLT engine) invokes these Java methods directly from the stylesheet.
 
 ---
 
-## Technical Architecture & Dependencies
+## Prerequisites & Setup Strategy
 
-The `MPLWriter` class interacts dynamically with the execution context passed into Java extension calls inside Saxon/XSLT steps.
+To use Java functions inside your XSLT mappings, follow these deployment options:
 
-### Build Requirements
-- **Compile-Time Dependencies:** Only `org.osgi.core-6.0.0.jar` is required.
-- **No SAP CPI runtime JARs** are needed in your local build environment.
+### Option A: Local iFlow Deployment (Recommended for Single iFlows)
+1. Compile your Java project into a `.jar` archive (e.g., `mpl-xslt-extension.jar`).
+2. Open your Integration Flow in SAP Integration Suite.
+3. Navigate to **Resources** > **Archive** > **Add** > **Jar**.
+4. Upload your `.jar` file into the iFlow's local bundle context.
+
+### Option B: Script Collection Deployment (Recommended for Enterprise Reuse)
+1. Navigate to your Integration Package in SAP Integration Suite.
+2. Create or open a **Script Collection** resource.
+3. Upload the `.jar` file into the Script Collection's **Archives** section.
+4. In your iFlow, add the Script Collection under **Resources** > **Script Collection References**.
 
 ---
 
-## Java Implementation (`MPLWriter.java`)
+## Step-by-Step Implementation Guide
 
-Deploy this compiled Java class (`.jar` file or embedded class) into your Integration Flow archive or Script Collection.
+<Sequence>
+  <Step title="1. Add XSLT Mapping to your iFlow" subtitle="Integration Flow Design">
+    Place an **XSLT Mapping** step into your Integration Flow processing pipeline where the payload transformation occurs.
+  </Step>
+  <Step title="2. Declare Java Extension Namespace in XSLT" subtitle="XSLT Stylesheet Header">
+    Declare a custom namespace at the top of your `.xsl` file pointing to the fully qualified Java class name:
+    `xmlns:mplWriter="java:com.sap.custom.xslt.MPLWriter"`
+  </Step>
+  <Step title="3. Define Exchange Parameter Passing" subtitle="Runtime Injection">
+    In your XSLT, declare a global parameter to receive the CPI log runtime object passed by the Camel exchange framework:
+    `<xsl:param name="sapLog"/>`
+  </Step>
+  <Step title="4. Invoke Extension Functions in XSLT" subtitle="XPath Execution">
+    Call the extension functions inside your templates using standard XPath variable evaluation.
+  </Step>
+</Sequence>
 
-```java
-package com.sap.custom.xslt;
+---
 
-import org.osgi.framework.Bundle;
-import org.osgi.framework.FrameworkUtil;
+## XSLT Implementation Example
 
-import java.lang.reflect.Method;
-import java.nio.charset.StandardCharsets;
-import java.net.URI;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Set;
+Below is a lean template demonstrating how to invoke the custom Java methods once the JAR is imported into your iFlow:
 
-/**
- * Utility class to interact with SAP CPI Message Processing Log (MPL) from XSLT mappings.
- */
-public class MPLWriter {
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<xsl:stylesheet version="2.0"
+    xmlns:xsl="[http://www.w3.org/1999/XSL/Transform](http://www.w3.org/1999/XSL/Transform)"
+    xmlns:mplWriter="java:com.sap.custom.xslt.MPLWriter"
+    exclude-result-prefixes="mplWriter">
 
-    public static String addCustomHeaderProperty(Object mpl, String name, String value) throws Exception {
-        return addCustomHeaderProperty(mpl, name, value, false);
-    }
+    <!-- Global parameter automatically bound to the CPI Exchange log object -->
+    <xsl:param name="sapLog"/>
 
-    public static String addCustomHeaderProperty(Object mpl, String name, String value, boolean debugEnabled) throws Exception {
-        debug(mpl, debugEnabled, "START addCustomHeaderProperty name=" + name + ", value=" + value);
+    <xsl:template match="/">
         
-        if (mpl == null) {
-            return "MPL context is null";
-        }
+        <!-- 1. Add Custom Header Property for indexed search in CPI UI -->
+        <xsl:variable name="hdrStatus" 
+                      select="mplWriter:addCustomHeaderProperty($sapLog, 'OrderID', //Order/ID/text(), true())"/>
 
-        // Access UserDefinedAttributes (UDAs) dynamically via reflection
-        Object rootMpl = mpl.getClass().getMethod("getRoot").invoke(mpl);
-        ClassLoader loader = mpl.getClass().getClassLoader();
-        
-        Class<?> udaClass = loader.loadClass("com.sap.it.op.mpl.UserDefinedAttributeTypeV2");
-        Class<?> keysClass = loader.loadClass("com.sap.it.op.mpl.MsgProcLogPropertyKeys");
-        
-        Object udaKey = keysClass.getField("TK_USER_DEFINED_ATTRIBUTES").get(null);
-        Method getMethod = rootMpl.getClass().getMethod("get", udaKey.getClass());
-        Object uda = getMethod.invoke(rootMpl, udaKey);
+        <!-- 2. Write an attachment directly to the Message Processing Log -->
+        <xsl:variable name="attStatus" 
+                      select="mplWriter:addAttachmentAsString($sapLog, 'SourcePayload.xml', string(.), 'text/xml', false())"/>
 
-        Method grantAttribute = udaClass.getMethod("grantAttribute", String.class);
-        @SuppressWarnings("unchecked")
-        Set<String> values = (Set<String>) grantAttribute.invoke(uda, name);
-        values.add(value);
+        <!-- Standard XSLT Transformation logic follows -->
+        <TargetRoot>
+            <xsl:apply-templates select="@*|node()"/>
+        </TargetRoot>
 
-        debug(mpl, debugEnabled, "UDA successfully updated: " + uda);
-        return "OK";
-    }
+    </xsl:template>
 
-    public static String addAttachmentAsString(Object mpl, String name, String content, String mimeType, boolean debugEnabled) throws Exception {
-        debug(mpl, debugEnabled, "START addAttachment name=" + name);
-        
-        if (mpl == null) {
-            return "MPL context is null";
-        }
+    <xsl:template match="@*|node()">
+        <xsl:copy>
+            <xsl:apply-templates select="@*|node()"/>
+        </xsl:copy>
+    </xsl:template>
 
-        // Obtain OSGi bundle context dynamically via Message class loader
-        Bundle bundle = FrameworkUtil.getBundle(mpl.getClass());
-        Class<?> messageClass = mpl.getClass().getClassLoader().loadClass("com.sap.esb.camel.message.storage.api.Message");
-        Object attachmentMessage = messageClass.getDeclaredConstructor().newInstance();
-
-        /*
-         * Set Attachment Headers
-         */
-        Map<String, String> headers = new HashMap<>();
-        headers.put("SapAttachmentName", name);
-        headers.put("SapAttachmentContentType", mimeType);
-        messageClass.getMethod("setHeader", Map.class).invoke(attachmentMessage, headers);
-
-        /*
-         * Set Body Content
-         */
-        byte[] bytes = content.getBytes(StandardCharsets.UTF_8);
-        debug(mpl, debugEnabled, "Attachment payload bytes=" + bytes.length);
-
-        // Fetch Message ID & Step ID from root MPL
-        Object messageGuid = getMplValue(mpl, "messageGuid");
-        Object stepId = getMplValue(mpl, "stepId");
-
-        messageClass.getMethod("setMplID", String.class).invoke(attachmentMessage, messageGuid.toString());
-        if (stepId != null) {
-            messageClass.getMethod("setStepID", String.class).invoke(attachmentMessage, stepId.toString());
-        }
-
-        /*
-         * Tag Message as ATTACHMENT
-         */
-        Class<?> tagClass = messageClass.getClassLoader().loadClass("com.sap.esb.camel.message.storage.api.Message$Tag");
-        Object attachmentTag = Enum.valueOf((Class<Enum>) tagClass, "ATTACHMENT");
-        messageClass.getMethod("setTag", tagClass).invoke(attachmentMessage, attachmentTag);
-
-        /*
-         * Persist Attachment to Storage
-         */
-        Object messageStore = getService(bundle, "com.sap.esb.camel.message.storage.api.MessageStore");
-        URI uri = (URI) messageStore.getClass().getMethod("add", messageClass, boolean.class).invoke(messageStore, attachmentMessage, true);
-        debug(mpl, debugEnabled, "Attachment URI=" + uri);
-
-        /*
-         * Register Attachment URI in MPL Attachment List
-         */
-        Object attachments = getMplValue(mpl, "attachments");
-        if (attachments != null) {
-            Method addMethod = attachments.getClass().getMethod("add", Object.class);
-            addMethod.invoke(attachments, uri);
-        }
-
-        return "OK";
-    }
-
-    private static Object getMplValue(Object mpl, String fieldName) throws Exception {
-        Method getMethod = mpl.getClass().getMethod("get" + fieldName.substring(0, 1).toUpperCase() + fieldName.substring(1));
-        return getMethod.invoke(mpl);
-    }
-
-    private static Object getService(Bundle bundle, String className) throws Exception {
-        org.osgi.framework.BundleContext bc = bundle.getBundleContext();
-        org.osgi.framework.ServiceReference<?> ref = bc.getServiceReference(className);
-        return bc.getService(ref);
-    }
-
-    private static void debug(Object mpl, boolean enabled, String message) {
-        if (enabled) {
-            // Write debug statement to standard out / logs
-            System.out.println("[MPLWriter DEBUG] " + message);
-        }
-    }
-}
+</xsl:stylesheet>
