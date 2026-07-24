@@ -20,12 +20,14 @@ To use the `MPLWriter` helper capabilities within your iFlow:
 
 ---
 
-## Key Built-In Capabilities
+## Key Built-In Capabilities & Compatibility
 
 By binding standard SAP CPI classes in XSLT, you can:
 - **Read Exchange Headers & Properties:** Access dynamic header values or iFlow properties directly inside XPath expressions.
 - **Write Custom Header Properties:** Store search-indexed keys for the Message Processing Log (MPL) UI.
 - **Access Values During Transformation:** Avoid adding extra Content Modifier steps before or after your XSLT mapping.
+
+> **Note on Runtime Class Visibility:** This library avoids direct references to `com.sap.gateway.ip.core.customdev.util.Message` to prevent `ClassNotFoundException` errors caused by OSGi bundle visibility constraints in the XSLT engine runtime.
 
 ---
 
