@@ -13,7 +13,7 @@ Officially unsupported XSLT java extension to direclty manipulate the SAP Integr
 
 To use the `MPLWriter` helper capabilities within your iFlow:
 
-1. Download the compiled [MPLWriter.jar](https://github.com/jokr0815/cpi_xslt_mpl_extension/releases/download/v1.0.0/MPLWriter.jar) from the latest release.
+1. Download the compiled [MPLWriter.jar](https://github.com/jokr0815/cpi_xslt_mpl_extension/releases/latest/download/MPLWriter.jar) from the latest release.
 2. Open your Integration Flow (iFlow) in SAP Integration Suite.
 3. Under the **Resources** tab, navigate to **Archives** (or **Scripts / Libraries**).
 4. Upload `MPLWriter.jar` into your iFlow archive.
