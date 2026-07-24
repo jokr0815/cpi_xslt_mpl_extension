@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Order>
+
+    <Header>
+        <ID>4500012345</ID>
+        <Date>2026-07-17</Date>
+        <CustomerNumber>1002934</CustomerNumber>
+        <Priority>HIGH</Priority>
+        <SalesOrganization>1710</SalesOrganization>
+    </Header>
+
+
+    <Items>
+
+        <Item>
+            <LineNumber>10</LineNumber>
+            <Material>MAT-8842</Material>
+            <Description>Industrial Sensor</Description>
+            <Quantity>50</Quantity>
+            <Unit>EA</Unit>
+            <NetValue>1250.00</NetValue>
+        </Item>
+
+
+        <Item>
+            <LineNumber>20</LineNumber>
+            <Material>MAT-9921</Material>
+            <Description>Control Module</Description>
+            <Quantity>25</Quantity>
+            <Unit>EA</Unit>
+            <NetValue>3750.00</NetValue>
+        </Item>
+
+
+        <Item>
+            <LineNumber>30</LineNumber>
+            <Material>MAT-5500</Material>
+            <Description>Mounting Bracket</Description>
+            <Quantity>100</Quantity>
+            <Unit>EA</Unit>
+            <NetValue>500.00</NetValue>
+        </Item>
+
+
+        <Item>
+            <LineNumber>40</LineNumber>
+            <Material>MAT-7711</Material>
+            <Description>Power Supply</Description>
+            <Quantity>10</Quantity>
+            <Unit>EA</Unit>
+            <NetValue>900.00</NetValue>
+        </Item>
+
+
+    </Items>
+
+</Order>
