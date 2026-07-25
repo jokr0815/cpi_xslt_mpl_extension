@@ -15,6 +15,9 @@ import net.sf.saxon.trace.XSLTTraceListener
 import net.sf.saxon.Controller
 import net.sf.saxon.expr.XPathContext
 import net.sf.saxon.om.Item
+import net.sf.saxon.om.StructuredQName
+import net.sf.saxon.value.ObjectValue
+import script.MPLWriter
 import javax.xml.transform.stream.StreamResult
 import javax.xml.transform.TransformerException
 import java.lang.reflect.Field
@@ -140,8 +143,11 @@ class CustomErrorListener implements ErrorListener {
 */
 class CustomTraceListener implements TraceListener {
   private final CustomTraceLogger logger
-  CustomTraceListener(CustomTraceLogger logger) {
+  private final CustomTraceLogger nativeLogger
+  private final ThreadLocal<Controller> controllers = new ThreadLocal<Controller>()
+  CustomTraceListener(CustomTraceLogger logger, CustomTraceLogger nativeLogger) {
     this.logger = logger
+    this.nativeLogger = nativeLogger
   }
   /**
    * Triggered when the trace listener opens execution.
@@ -151,6 +157,7 @@ class CustomTraceListener implements TraceListener {
    */
   @Override
   void open(Controller controller) {
+    controllers.set(controller)
     logger.info('TRACE LISTENER OPEN')
   }
   /**
@@ -161,6 +168,48 @@ class CustomTraceListener implements TraceListener {
   @Override
   void close() {
     logger.info('TRACE LISTENER CLOSE')
+    try {
+      Controller controller = controllers.get()
+      Object mpl = resolveMpl(controller)
+      if (mpl == null) {
+        logger.info('TRACE ATTACHMENT SKIPPED: MPL parameter is unavailable')
+        return
+      }
+
+      String customTrace = logger.getOutput()
+      String nativeTrace = nativeLogger.getOutput()
+      String combinedTrace =
+        '===== CUSTOM TRACE LISTENER =====\n' + customTrace +
+        '\n===== NATIVE XSLT TRACE LISTENER =====\n' + nativeTrace
+
+      MPLWriter.addAttachmentAsString(
+        mpl, 'saxon-combined-trace.txt', combinedTrace, 'text/plain', true
+      )
+      MPLWriter.addAttachmentAsString(
+        mpl,
+        'saxon-xslt-trace.xml',
+        SaxonDiagnosticReflection.createTraceXml(nativeTrace),
+        'application/xml',
+        true
+      )
+    } catch (Exception e) {
+      System.err.println('Could not write trace attachments on close: ' + e.message)
+    } finally {
+      controllers.remove()
+    }
+  }
+
+  private static Object resolveMpl(Controller controller) {
+    if (controller == null) {
+      return null
+    }
+    StructuredQName qname = new StructuredQName('', '', 'SAP_MessageProcessingLog')
+    def sequence = controller.getParameter(qname)
+    if (sequence == null || sequence.head() == null) {
+      return null
+    }
+    def item = sequence.head()
+    return item instanceof ObjectValue ? item.getObject() : null
   }
   /**
    * Called when entering an XSLT instruction.
@@ -509,15 +558,14 @@ Message processData( Message message ) {
   * 9. Install TraceListener
   * ========================================================
   */
-  CustomTraceListener traceListener = new CustomTraceListener( traceLogger )
   /*
   * Native XSLT trace logger.
   *
-  * IMPORTANT:
-  * This logger is already storing the output so that
-  * no other Groovy step AFTER the XSLT processor is required!
+  * The trace listener writes this output to MPL attachments from close(),
+  * after the XSLT execution has completed.
   */
   CustomTraceLogger xsltTraceLogger = new CustomTraceLogger()
+  CustomTraceListener traceListener = new CustomTraceListener( traceLogger, xsltTraceLogger )
   XSLTTraceListener xsltTraceListener = new XSLTTraceListener()
   xsltTraceListener.setOutputDestination( xsltTraceLogger )
   TraceListener combinedTraceListener = TraceEventMulticaster.add( traceListener, xsltTraceListener )
@@ -760,28 +808,6 @@ Message processData( Message message ) {
     * --------------------------------------------------------
     */
     messageLog.addAttachmentAsString( 'saxon-uri-diagnostics.txt', report.toString(), 'text/plain' )
-    /*
-    * --------------------------------------------------------
-    * Native XSLT trace
-    *
-    * IMPORTANT:
-    *
-    * If this Groovy step runs BEFORE the actual XSLT step,
-    * this will contain trace output.
-    * NO OTHER groovy step is required afterwards
-    * --------------------------------------------------------
-    */
-    String xsltTrace = xsltTraceLogger.getOutput()
-    messageLog.addAttachmentAsString( 'saxon-xslt-trace.txt', xsltTrace ?: '', 'text/plain' )
-    /*
-    * --------------------------------------------------------
-    * Native XSLT trace XML
-    *
-    * Convert the trace output into a valid XML document.
-    * --------------------------------------------------------
-    */
-    String xsltTraceXml = SaxonDiagnosticReflection.createTraceXml( xsltTrace )
-    messageLog.addAttachmentAsString( 'saxon-xslt-trace.xml', xsltTraceXml, 'application/xml' )
   }
   /*
   * ========================================================
