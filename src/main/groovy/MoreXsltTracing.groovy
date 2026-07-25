@@ -15,9 +15,6 @@ import net.sf.saxon.trace.XSLTTraceListener
 import net.sf.saxon.Controller
 import net.sf.saxon.expr.XPathContext
 import net.sf.saxon.om.Item
-import net.sf.saxon.om.StructuredQName
-import net.sf.saxon.value.ObjectValue
-import script.MPLWriter
 import javax.xml.transform.stream.StreamResult
 import javax.xml.transform.TransformerException
 import java.lang.reflect.Field
@@ -36,6 +33,7 @@ import javax.xml.parsers.DocumentBuilderFactory
 * the exact XSLT resource.
 */
 class SaxonDiagnosticConfig {
+  static final String GROOVY_STEP_NAME = 'MoreXsltTracing.groovy'
   static final String ENDPOINT_URI = 'xslt-saxon://mapping/XSLTMapping1.xsl' + '?output=bytes' + '&saxonExtensionFunctions=%23xsltExtensionsV11' + '&secureProcessing=false' + '&transformerFactory=%23saxoneeTransformer'
   static final String XSLT_RESOURCE = 'mapping/XSLTMapping1.xsl'
   static final String CUSTOM_EMITTER = 'script.CustomMessageEmitter'
@@ -144,11 +142,12 @@ class CustomErrorListener implements ErrorListener {
 class CustomTraceListener implements TraceListener {
   private final CustomTraceLogger logger
   private final CustomTraceLogger nativeLogger
-  private final ThreadLocal<Controller> controllers = new ThreadLocal<Controller>()
+  private final Object messageLog
   private Closure cleanup
-  CustomTraceListener(CustomTraceLogger logger, CustomTraceLogger nativeLogger) {
+  CustomTraceListener(CustomTraceLogger logger, CustomTraceLogger nativeLogger, Object messageLog) {
     this.logger = logger
     this.nativeLogger = nativeLogger
+    this.messageLog = messageLog
   }
   void setCleanup(Closure cleanup) {
     this.cleanup = cleanup
@@ -161,7 +160,6 @@ class CustomTraceListener implements TraceListener {
    */
   @Override
   void open(Controller controller) {
-    controllers.set(controller)
     logger.info('TRACE LISTENER OPEN')
   }
   /**
@@ -173,10 +171,8 @@ class CustomTraceListener implements TraceListener {
   void close() {
     logger.info('TRACE LISTENER CLOSE')
     try {
-      Controller controller = controllers.get()
-      Object mpl = resolveMpl(controller)
-      if (mpl == null) {
-        logger.info('TRACE ATTACHMENT SKIPPED: MPL parameter is unavailable')
+      if (messageLog == null) {
+        logger.info('TRACE ATTACHMENT SKIPPED: MessageLog is unavailable')
         return
       }
 
@@ -186,20 +182,15 @@ class CustomTraceListener implements TraceListener {
         '===== CUSTOM TRACE LISTENER =====\n' + customTrace +
         '\n===== NATIVE XSLT TRACE LISTENER =====\n' + nativeTrace
 
-      MPLWriter.addAttachmentAsString(
-        mpl, 'saxon-combined-trace.txt', combinedTrace, 'text/plain', true
-      )
-      MPLWriter.addAttachmentAsString(
-        mpl,
+      messageLog.addAttachmentAsString('saxon-combined-trace.txt', combinedTrace, 'text/plain')
+      messageLog.addAttachmentAsString(
         'saxon-xslt-trace.xml',
         SaxonDiagnosticReflection.createTraceXml(nativeTrace),
-        'application/xml',
-        true
+        'application/xml'
       )
     } catch (Exception e) {
       System.err.println('Could not write trace attachments on close: ' + e.message)
     } finally {
-      controllers.remove()
       try {
         if (cleanup != null) {
           cleanup.call()
@@ -207,20 +198,16 @@ class CustomTraceListener implements TraceListener {
       } catch (Exception e) {
         System.err.println('Could not restore Saxon diagnostic settings: ' + e.message)
       }
+      try {
+        if (messageLog != null) {
+          messageLog.setStringProperty(
+            'SAXON_XSLT_EXECUTION_FINISH', SaxonDiagnosticConfig.GROOVY_STEP_NAME
+          )
+        }
+      } catch (Exception e) {
+        System.err.println('Could not write XSLT finish property: ' + e.message)
+      }
     }
-  }
-
-  private static Object resolveMpl(Controller controller) {
-    if (controller == null) {
-      return null
-    }
-    StructuredQName qname = new StructuredQName('', '', 'SAP_MessageProcessingLog')
-    def sequence = controller.getParameter(qname)
-    if (sequence == null || sequence.head() == null) {
-      return null
-    }
-    def item = sequence.head()
-    return item instanceof ObjectValue ? item.getObject() : null
   }
   /**
    * Called when entering an XSLT instruction.
@@ -484,6 +471,20 @@ Message processData( Message message ) {
     throw new IllegalStateException( 'Message.exchange is null' )
   }
   /*
+  * This marker belongs at the beginning of the Groovy setup step. The Saxon
+  * TraceListener open() callback happens later, when XSLT execution starts.
+  */
+  def messageLog = messageLogFactory.getMessageLog( message )
+  if ( messageLog != null ) {
+    try {
+      messageLog.setStringProperty(
+        'SAXON_GROOVY_SETUP_START', SaxonDiagnosticConfig.GROOVY_STEP_NAME
+      )
+    } catch (Exception ignored) {
+      // Diagnostic properties must never mask the transformation result.
+    }
+  }
+  /*
   * ========================================================
   * 2. Resolve the endpoint from the URI
   *
@@ -577,7 +578,7 @@ Message processData( Message message ) {
   * after the XSLT execution has completed.
   */
   CustomTraceLogger xsltTraceLogger = new CustomTraceLogger()
-  CustomTraceListener traceListener = new CustomTraceListener( traceLogger, xsltTraceLogger )
+  CustomTraceListener traceListener = new CustomTraceListener( traceLogger, xsltTraceLogger, messageLog )
   XSLTTraceListener xsltTraceListener = new XSLTTraceListener()
   xsltTraceListener.setOutputDestination( xsltTraceLogger )
   TraceListener combinedTraceListener = TraceEventMulticaster.add( traceListener, xsltTraceListener )
@@ -841,7 +842,6 @@ Message processData( Message message ) {
   * 19. Attach diagnostic output
   * ========================================================
   */
-  def messageLog = messageLogFactory.getMessageLog( message )
   if ( messageLog != null ) {
     /*
     * --------------------------------------------------------
@@ -868,5 +868,14 @@ Message processData( Message message ) {
   * 21. Return message
   * ========================================================
   */
+  if ( messageLog != null ) {
+    try {
+      messageLog.setStringProperty(
+        'SAXON_GROOVY_SETUP_FINISH', SaxonDiagnosticConfig.GROOVY_STEP_NAME
+      )
+    } catch (Exception ignored) {
+      // Diagnostic properties must never mask the transformation result.
+    }
+  }
   return message
 }
