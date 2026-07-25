@@ -145,9 +145,13 @@ class CustomTraceListener implements TraceListener {
   private final CustomTraceLogger logger
   private final CustomTraceLogger nativeLogger
   private final ThreadLocal<Controller> controllers = new ThreadLocal<Controller>()
+  private Closure cleanup
   CustomTraceListener(CustomTraceLogger logger, CustomTraceLogger nativeLogger) {
     this.logger = logger
     this.nativeLogger = nativeLogger
+  }
+  void setCleanup(Closure cleanup) {
+    this.cleanup = cleanup
   }
   /**
    * Triggered when the trace listener opens execution.
@@ -196,6 +200,13 @@ class CustomTraceListener implements TraceListener {
       System.err.println('Could not write trace attachments on close: ' + e.message)
     } finally {
       controllers.remove()
+      try {
+        if (cleanup != null) {
+          cleanup.call()
+        }
+      } catch (Exception e) {
+        System.err.println('Could not restore Saxon diagnostic settings: ' + e.message)
+      }
     }
   }
 
@@ -551,6 +562,7 @@ Message processData( Message message ) {
   * 8. Install Logger
   * ========================================================
   */
+  def previousLogger = configuration.getLogger()
   CustomTraceLogger traceLogger = new CustomTraceLogger()
   configuration.setLogger( traceLogger )
   /*
@@ -569,6 +581,7 @@ Message processData( Message message ) {
   XSLTTraceListener xsltTraceListener = new XSLTTraceListener()
   xsltTraceListener.setOutputDestination( xsltTraceLogger )
   TraceListener combinedTraceListener = TraceEventMulticaster.add( traceListener, xsltTraceListener )
+  def previousTraceListener = configuration.getTraceListener()
   configuration.setTraceListener( combinedTraceListener )
   /*
   * ========================================================
@@ -577,6 +590,7 @@ Message processData( Message message ) {
   * This is independent from the Logger and TraceListener.
   * ========================================================
   */
+  def previousErrorListener = configuration.getErrorListener()
   CustomErrorListener errorListener = new CustomErrorListener()
   configuration.setErrorListener( errorListener )
   /*
@@ -618,6 +632,33 @@ Message processData( Message message ) {
     receiverBefore = SaxonDiagnosticReflection.readFieldRecursive( preparedStylesheet, 'messageReceiverClassName' )?.toString()
     receiverChanged = SaxonDiagnosticReflection.writeFieldRecursive( preparedStylesheet, 'messageReceiverClassName', SaxonDiagnosticConfig.CUSTOM_EMITTER )
     receiverAfter = SaxonDiagnosticReflection.readFieldRecursive( preparedStylesheet, 'messageReceiverClassName' )?.toString()
+  }
+  /*
+  * ========================================================
+  * DEMO CLEANUP
+  *
+  * The endpoint/configuration is cached by CPI. Restore the values that this
+  * diagnostic step replaced after the current transformation closes. This is
+  * useful for the sandbox demo, but it is not a concurrency substitute for a
+  * per-execution Saxon configuration.
+  * ========================================================
+  */
+  traceListener.setCleanup {
+    if ( configuration.getLogger()?.is( traceLogger ) ) {
+      configuration.setLogger( previousLogger )
+    }
+    if ( configuration.getTraceListener()?.is( combinedTraceListener ) ) {
+      configuration.setTraceListener( previousTraceListener )
+    }
+    if ( configuration.getErrorListener()?.is( errorListener ) ) {
+      configuration.setErrorListener( previousErrorListener )
+    }
+    if ( preparedStylesheet != null && receiverChanged ) {
+      String receiverCurrent = SaxonDiagnosticReflection.readFieldRecursive( preparedStylesheet, 'messageReceiverClassName' )?.toString()
+      if ( receiverCurrent == SaxonDiagnosticConfig.CUSTOM_EMITTER ) {
+        SaxonDiagnosticReflection.writeFieldRecursive( preparedStylesheet, 'messageReceiverClassName', receiverBefore )
+      }
+    }
   }
   /*
   * ========================================================
