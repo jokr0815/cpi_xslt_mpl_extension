@@ -3,8 +3,7 @@
   xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:saxon="http://saxon.sf.net/"
   xmlns:mpl="java:script.MPLWriter" exclude-result-prefixes="xs saxon mpl">
   <!-- SAP CPI injects the Message Processing Log object -->
-  <xsl:param
-    name="SAP_MessageProcessingLog" />
+  <xsl:param name="SAP_MessageProcessingLog" />
   <!-- Enable MPL debug -->
   <xsl:param name="debugEnabled" select="true()" />
   <!-- Saxon template execution tracing -->
@@ -20,8 +19,9 @@
     name="totalQuantity" as="xs:integer" initial-value="0" saxon:trace="yes">
     <xsl:accumulator-rule match="Quantity/text()" select="$value + xs:integer(.)" />
   </xsl:accumulator>
-  <xsl:template
-    match="/">
+  <xsl:template match="/">
+    <!-- send a message to our registered CustomMessageEmitter -->
+    <xsl:message>Hello CustomMessageEmitter</xsl:message>
     <!-- Check if MessageProcessingLog is missing or null -->
     <xsl:choose>
       <xsl:when test="empty($SAP_MessageProcessingLog)">
@@ -131,8 +131,7 @@
     </OrderResult>
   </xsl:template>
   <!-- Item transformation -->
-  <xsl:template
-    match="Item">
+  <xsl:template match="Item">
     <Item>
       <Material>
         <xsl:value-of select="Material" />
